@@ -84,10 +84,10 @@ insert into public.card_rates (category_id, country, rate) values
 on conflict do nothing;
 
 insert into public.crypto_assets (id, symbol, name, color, network, buy_rate, sell_rate, deposit_address, min_amount, decimals, sort) values
-  ('usdt', 'USDT', 'Tether', '#26A17B', 'TRC20 (Tron)', 1592, 1548, 'TXq8mYadexEscrow4hVb1n2QwZr7kLp9dS3', 10, 2, 0),
-  ('btc', 'BTC', 'Bitcoin', '#F7931A', 'Bitcoin', 171450000, 167200000, 'bc1qyadexescrow7h3k0v2m9w4s8f6t5r1x0pq2', 0.0005, 6, 1),
-  ('eth', 'ETH', 'Ethereum', '#627EEA', 'ERC20 (Ethereum)', 6120000, 5960000, '0x7aDeX0e5c7B2f1a9C3d4E8b6F0a1Y2d3E4x5C6', 0.01, 4, 2),
-  ('usdc', 'USDC', 'USD Coin', '#2775CA', 'BEP20 (BNB Chain)', 1588, 1542, '0x9YadexEscrowB4c2F8d1E6a3C7b0D5e9F2a4C1', 10, 2, 3)
+  ('usdt', 'USDT', 'Tether', '#26A17B', 'TRC20 (Tron)', 1592, 1548, 'SET-YOUR-USDT-ADDRESS', 10, 2, 0),
+  ('btc', 'BTC', 'Bitcoin', '#F7931A', 'Bitcoin', 171450000, 167200000, 'SET-YOUR-BTC-ADDRESS', 0.0005, 6, 1),
+  ('eth', 'ETH', 'Ethereum', '#627EEA', 'ERC20 (Ethereum)', 6120000, 5960000, 'SET-YOUR-ETH-ADDRESS', 0.01, 4, 2),
+  ('usdc', 'USDC', 'USD Coin', '#2775CA', 'BEP20 (BNB Chain)', 1588, 1542, 'SET-YOUR-USDC-ADDRESS', 10, 2, 3)
 on conflict (id) do nothing;
 
 insert into public.coupons (code, label, bonus_per_unit, first_sale_only) values
