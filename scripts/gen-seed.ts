@@ -1,5 +1,6 @@
 // Writes supabase/seed.sql from the catalogue in src/data.ts so the app and database start with the same rates.
 // Run: node --experimental-strip-types scripts/gen-seed.ts
+// Deposit addresses are left as placeholders: put your real escrow wallet addresses in crypto_assets before taking crypto.
 import { writeFileSync } from 'node:fs'
 import { CARDS, COUPONS, CRYPTO } from '../src/data.ts'
 
@@ -21,7 +22,7 @@ ${rows(CARDS.flatMap(c => c.categories.flatMap(k => Object.entries(k.rates).map(
 on conflict do nothing;
 
 insert into public.crypto_assets (id, symbol, name, color, network, buy_rate, sell_rate, deposit_address, min_amount, decimals, sort) values
-${rows(CRYPTO.map((a, i) => [a.id, a.symbol, a.name, a.color, a.network, a.buyRate, a.sellRate, a.depositAddress, minOf(a.symbol), a.decimals, i]))}
+${rows(CRYPTO.map((a, i) => [a.id, a.symbol, a.name, a.color, a.network, a.buyRate, a.sellRate, `SET-YOUR-${a.symbol}-ADDRESS`, minOf(a.symbol), a.decimals, i]))}
 on conflict (id) do nothing;
 
 insert into public.coupons (code, label, bonus_per_unit, first_sale_only) values

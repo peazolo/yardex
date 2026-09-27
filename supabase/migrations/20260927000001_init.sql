@@ -461,7 +461,7 @@ begin
     perform public._log(t.id, (t.details ->> 'Amount') || ' released to your wallet');
     perform public._notify(t.user_id, 'Crypto sent', (t.details ->> 'Amount') || ' was released from escrow to your wallet.');
   else
-    -- withdrawal: the bank transfer itself is sent by the payout provider (see supabase/functions/payout)
+    -- withdrawal: the admin has sent the bank transfer (by hand until a payout provider is connected)
     update public.trades set status = 'completed', reviewed_by = auth.uid(), updated_at = now() where id = t.id returning * into t;
     perform public._log(t.id, 'Sent to ' || (t.details ->> 'Bank'));
     perform public._notify(t.user_id, 'Withdrawal sent', (t.details ->> 'Amount') || ' is on its way to your ' || (t.details ->> 'Bank') || ' account.');

@@ -13,7 +13,16 @@ npm run build:preview  # single-file HTML preview in dist-preview/
 
 Demo mode starts automatically when no Supabase keys are set. Log in with any username, the withdrawal PIN is 1234, and the Admin panel is under Account.
 
-## Going live with Supabase
+## Live backend
+
+The Supabase project is **yadex** (ref `mzzvgxdgpyiowyrjoqne`, London). Its URL and publishable key are in `.env.production`, so `npm run build` produces the real app and `npm run dev` stays in demo mode. To try the real backend locally, copy `.env.production` to `.env.local`.
+
+Before real users:
+
+- Put your real escrow wallet addresses in the `crypto_assets` table. They are placeholders (`SET-YOUR-USDT-ADDRESS` and so on) and the app shows them as-is.
+- Once the app is hosted, set **Authentication → URL Configuration → Site URL** in Supabase to the app's address so confirmation emails link back to it.
+
+## Setting up a new Supabase project
 
 1. Create a Supabase project.
 2. Apply the database: `npx supabase link --project-ref <ref>` then `npx supabase db push`, and load the starting rates with `psql "$DATABASE_URL" -f supabase/seed.sql` (or paste both into the SQL editor).
