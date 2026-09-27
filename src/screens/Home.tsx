@@ -15,7 +15,7 @@ export function tierFor(volume: number) {
 }
 
 export function Home() {
-  const { s, patch } = useStore()
+  const { s, api } = useStore()
   const { push, setTab } = useNav()
   const [q, setQ] = useState('')
   const unread = s.notices.filter(n => !n.read).length
@@ -46,7 +46,7 @@ export function Home() {
       <section className="balance">
         <div className="balance-label">
           <span>Wallet balance</span>
-          <button className="icon-btn ghost-light" onClick={() => patch({ hideBalance: !s.hideBalance })} aria-label={s.hideBalance ? 'Show balance' : 'Hide balance'}>
+          <button className="icon-btn ghost-light" onClick={() => api.setPrefs({ hideBalance: !s.hideBalance })} aria-label={s.hideBalance ? 'Show balance' : 'Hide balance'}>
             <Icon name={s.hideBalance ? 'eyeOff' : 'eye'} size={18} />
           </button>
         </div>

@@ -7,7 +7,7 @@ import { BrandTile, CoinTile, Empty, Header, Row, Sheet, Toggle, copyText, naira
 import { tierFor } from './Home'
 
 export function Account() {
-  const { s, patch } = useStore()
+  const { s, api } = useStore()
   const { push, reset } = useNav()
   const [confirmOut, setConfirmOut] = useState(false)
   const { tier } = tierFor(s.lifetimeVolume)
@@ -38,34 +38,50 @@ export function Account() {
       </div>
       <div className="row-group">
         <h3>Security</h3>
-        <Row icon="lock" label="Transaction PIN" hint={s.pin ? 'Set' : 'Not set'} onClick={() => push({ name: 'pin' })} />
+        <Row icon="lock" label="Transaction PIN" hint={s.hasPin ? 'Set' : 'Not set'} onClick={() => push({ name: 'pin' })} />
         <Row icon="gear" label="Settings" hint="Two-factor, alerts, privacy" onClick={() => push({ name: 'settings' })} />
       </div>
       <div className="row-group">
         <h3>More</h3>
         <Row icon="chart" label="Rates" onClick={() => push({ name: 'rates' })} />
         <Row icon="help" label="Help and support" onClick={() => push({ name: 'help' })} />
-        <Row icon="admin" label="Admin panel" hint="Review cards and pay out (demo)" onClick={() => push({ name: 'admin' })} />
+        {s.isAdmin && <Row icon="admin" label="Admin panel" hint={api.mode === 'demo' ? 'Review cards and pay out (demo)' : 'Review cards and pay out'} onClick={() => push({ name: 'admin' })} />}
         <Row icon="logout" label="Log out" danger onClick={() => setConfirmOut(true)} right={<span />} />
       </div>
 
       <Sheet open={confirmOut} onClose={() => setConfirmOut(false)} title="Log out of Yadex?">
         <p className="muted">You'll need your username and password to log back in.</p>
-        <button className="btn danger block" onClick={() => { patch({ loggedIn: false }); reset('home') }}>Log out</button>
+        <button className="btn danger block" onClick={async () => { await api.signOut(); reset('home') }}>Log out</button>
       </Sheet>
     </div>
   )
 }
 
 export function Profile() {
-  const { s, patch } = useStore()
+  const { s, api } = useStore()
   const { pop, toast } = useNav()
   const [u, setU] = useState(s.user)
+  const [busy, setBusy] = useState(false)
+  // in the live app the email is the login and is changed through account recovery, not here
+  const fields = ([['fullName', 'Full name'], ['username', 'Username'], ['email', 'Email'], ['phone', 'Phone number']] as const)
+    .filter(([k]) => api.mode === 'demo' || k !== 'email')
+  const save = async () => {
+    setBusy(true)
+    try {
+      await api.updateProfile(u)
+      toast('Profile saved')
+      pop()
+    } catch (e) {
+      toast((e as Error).message.includes('duplicate') ? 'That username is taken.' : (e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
   return (
     <div className="screen">
       <Header title="Profile" />
       <div className="form">
-        {([['fullName', 'Full name'], ['username', 'Username'], ['email', 'Email'], ['phone', 'Phone number']] as const).map(([k, label]) => (
+        {fields.map(([k, label]) => (
           <label key={k} className="field">
             <span>{label}</span>
             <input id={`profile-${k}`} value={u[k]} onChange={e => setU({ ...u, [k]: e.target.value })} />
@@ -78,14 +94,14 @@ export function Profile() {
             <small>Add your BVN or NIN to raise your daily limit from ₦500,000 to ₦5,000,000.</small>
           </div>
         </div>
-        <button className="btn primary block" onClick={() => { patch({ user: u }); toast('Profile saved'); pop() }}>Save changes</button>
+        <button className="btn primary block" onClick={save} disabled={busy}>Save changes</button>
       </div>
     </div>
   )
 }
 
 export function Banks() {
-  const { s, patch } = useStore()
+  const { s, api } = useStore()
   const { toast } = useNav()
   const [adding, setAdding] = useState(false)
   const [bank, setBank] = useState(BANKS[2])
@@ -109,7 +125,7 @@ export function Banks() {
           <div key={b.id} className="list-item">
             <span className="row-icon"><Icon name="bank" /></span>
             <span className="li-text"><strong>{b.bank}</strong><small>{b.number} · {b.name}</small></span>
-            <button className="icon-btn" aria-label={`Remove ${b.bank}`} onClick={() => { patch({ banks: s.banks.filter(x => x.id !== b.id) }); toast('Bank account removed') }}>
+            <button className="icon-btn" aria-label={`Remove ${b.bank}`} onClick={() => api.removeBank(b.id).then(() => toast('Bank account removed'), e => toast(e.message))}>
               <Icon name="trash" size={18} />
             </button>
           </div>
@@ -133,11 +149,15 @@ export function Banks() {
           <button
             className="btn primary block"
             disabled={!resolved}
-            onClick={() => {
-              patch({ banks: [...s.banks, { id: 'b' + Date.now(), bank, number: num, name: resolved }] })
-              setAdding(false)
-              setNum('')
-              toast('Bank account added')
+            onClick={async () => {
+              try {
+                await api.addBank(bank, num, resolved)
+                setAdding(false)
+                setNum('')
+                toast('Bank account added')
+              } catch (e) {
+                toast((e as Error).message.includes('duplicate') ? 'You already saved this account.' : (e as Error).message)
+              }
             }}
           >
             Save account
@@ -149,23 +169,26 @@ export function Banks() {
 }
 
 export function Pin() {
-  const { s, patch } = useStore()
+  const { s, api } = useStore()
   const { pop, toast } = useNav()
   const [cur, setCur] = useState('')
   const [next, setNext] = useState('')
-  const save = () => {
-    if (s.pin && cur !== s.pin) return toast('Your current PIN is wrong.')
+  const save = async () => {
     if (!/^\d{4}$/.test(next)) return toast('Your new PIN must be 4 digits.')
-    patch({ pin: next })
-    toast('PIN updated')
-    pop()
+    try {
+      await api.setPin(cur, next)
+      toast('PIN updated')
+      pop()
+    } catch (e) {
+      toast((e as Error).message)
+    }
   }
   return (
     <div className="screen">
       <Header title="Transaction PIN" />
       <div className="form">
         <p className="muted">You'll enter this PIN to confirm every withdrawal.</p>
-        {s.pin && (
+        {s.hasPin && (
           <label className="field"><span>Current PIN</span><input id="pin-current" type="password" inputMode="numeric" maxLength={4} value={cur} onChange={e => setCur(e.target.value.replace(/\D/g, ''))} /></label>
         )}
         <label className="field"><span>New PIN</span><input id="pin-new" type="password" inputMode="numeric" maxLength={4} value={next} onChange={e => setNext(e.target.value.replace(/\D/g, ''))} /></label>
@@ -176,11 +199,13 @@ export function Pin() {
 }
 
 export function Notifications() {
-  const { s, patch } = useStore()
+  const { s, api } = useStore()
+  const unread = s.notices.some(n => !n.read)
   useEffect(() => {
-    const t = window.setTimeout(() => patch(st => ({ notices: st.notices.map(n => ({ ...n, read: true })) })), 1200)
+    if (!unread) return
+    const t = window.setTimeout(() => api.markAllRead().catch(() => {}), 1200)
     return () => window.clearTimeout(t)
-  }, [patch])
+  }, [api, unread])
   return (
     <div className="screen">
       <Header title="Notifications" />
@@ -199,7 +224,8 @@ export function Notifications() {
 }
 
 export function Settings() {
-  const { s, patch, reset } = useStore()
+  const { s, api } = useStore()
+  const patch = (p: Parameters<typeof api.setPrefs>[0]) => api.setPrefs(p).catch(e => toast(e.message))
   const { toast } = useNav()
   return (
     <div className="screen">
@@ -209,10 +235,12 @@ export function Settings() {
         <Row icon="bell" label="Push notifications" hint="Trade updates and rate alerts" right={<Toggle id="set-push" label="Push notifications" on={s.pushNotifications} onChange={v => patch({ pushNotifications: v })} />} />
         <Row icon="eyeOff" label="Hide balance" hint="Mask your wallet on the home screen" right={<Toggle id="set-hide" label="Hide balance" on={s.hideBalance} onChange={v => patch({ hideBalance: v })} />} />
       </div>
-      <div className="row-group">
-        <h3>Demo</h3>
-        <Row icon="swap" label="Reset demo data" hint="Restore the sample balance and trades" onClick={() => { reset(); toast('Demo data reset') }} right={<span />} />
-      </div>
+      {api.resetDemo && (
+        <div className="row-group">
+          <h3>Demo</h3>
+          <Row icon="swap" label="Reset demo data" hint="Restore the sample balance and trades" onClick={() => { api.resetDemo!(); toast('Demo data reset') }} right={<span />} />
+        </div>
+      )}
     </div>
   )
 }

@@ -7,7 +7,7 @@ import { BrandTile, Header, Sheet, naira, readImage } from '../components/ui'
 
 export function CardSell({ brandId }: { brandId: string }) {
   const brand = CARDS.find(c => c.id === brandId) ?? CARDS[0]
-  const { s, addTx, patch } = useStore()
+  const { api } = useStore()
   const { reset, toast } = useNav()
 
   const [catId, setCatId] = useState(brand.categories[0].id)
@@ -22,13 +22,14 @@ export function CardSell({ brandId }: { brandId: string }) {
   const [images, setImages] = useState<string[]>([])
   const [coupon, setCoupon] = useState('')
   const [confirm, setConfirm] = useState(false)
-  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
   const value = Number(amount) || 0
   const rate = category.rates[cc] ?? 0
   const couponKey = coupon.trim().toUpperCase()
-  const couponOk = !!COUPONS[couponKey] && !s.usedCoupons.includes(couponKey)
+  // the server re-checks the coupon (and whether it was already used) on submit
+  const couponOk = !!COUPONS[couponKey]
   const bonus = couponOk ? COUPONS[couponKey].bonusPerUnit : 0
   const payout = useMemo(() => Math.round(value * (rate + bonus)), [value, rate, bonus])
 
@@ -47,29 +48,18 @@ export function CardSell({ brandId }: { brandId: string }) {
     return ''
   }
 
-  const submit = () => {
-    const tx = addTx({
-      type: 'giftcard',
-      title: `${brand.name.split(' /')[0]} ${cur.symbol}${value}`,
-      subtitle: `${category.name} · ${cc}`,
-      amountNgn: payout,
-      details: {
-        Brand: brand.name,
-        Category: category.name,
-        Country: cur.name,
-        'Card value': `${cur.symbol}${value}`,
-        Type: kind === 'physical' ? 'Physical' : 'E-code',
-        Rate: `₦${rate.toLocaleString()} / ${cur.symbol}`,
-        ...(kind === 'ecode' && code ? { Code: code.trim() } : {}),
-        ...(couponOk ? { Coupon: `${couponKey} (+₦${bonus}/${cur.symbol})` } : {}),
-      },
-      image: images[0],
-      firstStep: 'Submitted for review',
-    })
-    if (couponOk) patch(st => ({ usedCoupons: [...st.usedCoupons, couponKey] }))
-    setConfirm(false)
-    toast('Card submitted. We’ll notify you when it’s approved.')
-    reset('history', [{ name: 'tx', id: tx.id }])
+  const submit = async () => {
+    setBusy(true)
+    try {
+      const tx = await api.sellCard({ brandId: brand.id, categoryId: category.id, country: cc, value, kind, code: kind === 'ecode' ? code.trim() : '', images, coupon: couponKey })
+      setConfirm(false)
+      toast('Card submitted. We’ll notify you when it’s approved.')
+      reset('history', [{ name: 'tx', id: tx.id }])
+    } catch (e) {
+      toast((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (
@@ -174,7 +164,6 @@ export function CardSell({ brandId }: { brandId: string }) {
           className="btn primary"
           onClick={() => {
             const e = validate()
-            setError(e)
             if (e) toast(e)
             else setConfirm(true)
           }}
@@ -182,7 +171,6 @@ export function CardSell({ brandId }: { brandId: string }) {
           Continue
         </button>
       </div>
-      {error && <p className="form-error pad">{error}</p>}
 
       <Sheet open={confirm} onClose={() => setConfirm(false)} title="Confirm your trade">
         <dl className="kv">
@@ -195,7 +183,7 @@ export function CardSell({ brandId }: { brandId: string }) {
           <dt className="big">You'll receive</dt><dd className="big">{naira(payout)}</dd>
         </dl>
         <p className="fine">Your card is held by Yadex while we verify it. Payment lands in your wallet once it's approved. If the card is invalid or already used, the trade is declined.</p>
-        <button className="btn primary block" onClick={submit}>Submit card</button>
+        <button className="btn primary block" onClick={submit} disabled={busy}>{busy ? 'Uploading…' : 'Submit card'}</button>
       </Sheet>
     </div>
   )

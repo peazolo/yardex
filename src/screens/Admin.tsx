@@ -8,7 +8,9 @@ const REASONS = ['Card already redeemed', 'Photo is unclear', 'Wrong category or
 
 /** Operator view. In production this is a separate, access-controlled web console. */
 export function Admin() {
-  const { s, approve, reject } = useStore()
+  const { s, api } = useStore()
+  const [busy, setBusy] = useState(false)
+  const all = s.reviewTxs ?? s.txs
   const { toast } = useNav()
   const [view, setView] = useState<'queue' | 'done'>('queue')
   const [sel, setSel] = useState<Tx | null>(null)
@@ -16,8 +18,8 @@ export function Admin() {
   const [rejecting, setRejecting] = useState(false)
   const [reason, setReason] = useState(REASONS[0])
 
-  const queue = s.txs.filter(t => t.status === 'pending' || t.status === 'in_escrow')
-  const done = s.txs.filter(t => t.status === 'completed' || t.status === 'rejected')
+  const queue = all.filter(t => t.status === 'pending' || t.status === 'in_escrow')
+  const done = all.filter(t => t.status === 'completed' || t.status === 'rejected')
   const list = view === 'queue' ? queue : done
   const owed = queue.filter(t => t.amountNgn > 0).reduce((a, t) => a + t.amountNgn, 0)
 
@@ -25,6 +27,18 @@ export function Admin() {
     setSel(t)
     setPayout(String(Math.abs(t.amountNgn)))
     setRejecting(false)
+  }
+  const act = async (fn: () => Promise<void>, done: string) => {
+    setBusy(true)
+    try {
+      await fn()
+      toast(done)
+      setSel(null)
+    } catch (e) {
+      toast((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
   }
   const cryptoAwaitingCoins = sel?.type === 'crypto-sell' && sel.status === 'pending'
 
@@ -50,7 +64,7 @@ export function Admin() {
       <Sheet open={!!sel} onClose={() => setSel(null)} title={sel ? `${sel.title} · ${sel.id}` : ''}>
         {sel && (
           <div className="form">
-            <div className="admin-status"><StatusPill status={sel.status} /><small>{fmtDate(sel.createdAt)} · @{s.user.username}</small></div>
+            <div className="admin-status"><StatusPill status={sel.status} /><small>{fmtDate(sel.createdAt)} · @{sel.username ?? s.user.username}</small></div>
             {sel.image ? <img className="tx-image" src={sel.image} alt="Submitted card" /> : sel.type === 'giftcard' && <p className="muted">No photo attached.</p>}
             <dl className="kv small">
               {Object.entries(sel.details).map(([k, v]) => <div key={k} className="kv-row"><dt>{k}</dt><dd className={k === 'Code' || k.includes('ddress') || k.includes('wallet') || k === 'Tx hash' ? 'mono' : ''}>{v}</dd></div>)}
@@ -67,11 +81,8 @@ export function Admin() {
                 {cryptoAwaitingCoins && <p className="warn-box">The user has not marked the coins as sent yet.</p>}
                 <button
                   className="btn primary block"
-                  onClick={() => {
-                    approve(sel.id, sel.amountNgn > 0 ? Number(payout) : undefined)
-                    toast('Approved. The user has been notified.')
-                    setSel(null)
-                  }}
+                  disabled={busy}
+                  onClick={() => act(() => api.approve(sel.id, sel.amountNgn > 0 ? Number(payout) : undefined), 'Approved. The user has been notified.')}
                 >
                   {approveLabel}
                 </button>
@@ -87,7 +98,7 @@ export function Admin() {
                   </div>
                 </div>
                 {sel.amountNgn < 0 && <p className="muted">{naira(-sel.amountNgn)} will be refunded to the user's wallet.</p>}
-                <button className="btn danger block" onClick={() => { reject(sel.id, reason); toast('Declined. The user has been notified.'); setSel(null) }}>Decline trade</button>
+                <button className="btn danger block" disabled={busy} onClick={() => act(() => api.reject(sel.id, reason), 'Declined. The user has been notified.')}>Decline trade</button>
                 <button className="btn ghost block" onClick={() => setRejecting(false)}>Back</button>
               </>
             )}

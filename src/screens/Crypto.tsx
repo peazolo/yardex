@@ -11,7 +11,7 @@ const ESCROW_STEPS = {
 }
 
 export function Crypto({ assetId, side: initialSide }: { assetId?: string; side?: 'buy' | 'sell' }) {
-  const { s, addTx, markSent } = useStore()
+  const { s, api } = useStore()
   const { toast, reset } = useNav()
   const [asset, setAsset] = useState(CRYPTO.find(a => a.id === assetId) ?? CRYPTO[0])
   const [side, setSide] = useState<'buy' | 'sell'>(initialSide ?? 'sell')
@@ -20,6 +20,7 @@ export function Crypto({ assetId, side: initialSide }: { assetId?: string; side?
   const [open, setOpen] = useState<Tx | null>(null)
   const [hash, setHash] = useState('')
   const [confirm, setConfirm] = useState(false)
+  const [busy, setBusy] = useState(false)
 
   const n = Number(qty) || 0
   const rate = side === 'sell' ? asset.sellRate : asset.buyRate
@@ -33,25 +34,23 @@ export function Crypto({ assetId, side: initialSide }: { assetId?: string; side?
     return ''
   }
 
-  const start = () => {
-    const amount = `${n} ${asset.symbol}`
-    if (side === 'sell') {
-      const tx = addTx({
-        type: 'crypto-sell', title: `Sell ${amount}`, subtitle: `${asset.symbol} · ${asset.network}`, amountNgn: total,
-        details: { Asset: asset.name, Network: asset.network, Amount: amount, Rate: `₦${rate.toLocaleString()} / ${asset.symbol}`, 'Escrow address': asset.depositAddress },
-        firstStep: 'Trade opened, waiting for your coins',
-      })
-      setConfirm(false)
-      setOpen(tx)
-    } else {
-      const tx = addTx({
-        type: 'crypto-buy', title: `Buy ${amount}`, subtitle: `${asset.symbol} · ${asset.network}`, amountNgn: -total, status: 'in_escrow',
-        details: { Asset: asset.name, Network: asset.network, Amount: amount, Rate: `₦${rate.toLocaleString()} / ${asset.symbol}`, 'Your wallet': wallet.trim() },
-        firstStep: `${naira(total)} held in escrow`,
-      })
-      setConfirm(false)
-      toast('Order placed. Your naira is in escrow until the coins are sent.')
-      reset('history', [{ name: 'tx', id: tx.id }])
+  const start = async () => {
+    setBusy(true)
+    try {
+      if (side === 'sell') {
+        const tx = await api.openCryptoSell(asset.id, n)
+        setConfirm(false)
+        setOpen(tx)
+      } else {
+        const tx = await api.openCryptoBuy(asset.id, n, wallet.trim())
+        setConfirm(false)
+        toast('Order placed. Your naira is in escrow until the coins are sent.')
+        reset('history', [{ name: 'tx', id: tx.id }])
+      }
+    } catch (e) {
+      toast((e as Error).message)
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -79,10 +78,18 @@ export function Crypto({ assetId, side: initialSide }: { assetId?: string; side?
           </label>
           <button
             className="btn primary block"
-            onClick={() => {
-              markSent(open.id, hash.trim())
-              toast('Thanks. We’ll release your naira once the coins confirm.')
-              reset('history', [{ name: 'tx', id: open.id }])
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true)
+              try {
+                await api.markSent(open.id, hash.trim())
+                toast('Thanks. We’ll release your naira once the coins confirm.')
+                reset('history', [{ name: 'tx', id: open.id }])
+              } catch (e) {
+                toast((e as Error).message)
+              } finally {
+                setBusy(false)
+              }
             }}
           >
             I've sent the coins
@@ -164,7 +171,7 @@ export function Crypto({ assetId, side: initialSide }: { assetId?: string; side?
           {side === 'buy' && (<><dt>To wallet</dt><dd className="mono">{wallet.slice(0, 10)}…{wallet.slice(-6)}</dd></>)}
           <dt className="big">{side === 'sell' ? "You'll receive" : 'Held from wallet'}</dt><dd className="big">{naira(total)}</dd>
         </dl>
-        <button className="btn primary block" onClick={start}>{side === 'sell' ? 'Get escrow address' : 'Pay and place order'}</button>
+        <button className="btn primary block" onClick={start} disabled={busy}>{side === 'sell' ? 'Get escrow address' : 'Pay and place order'}</button>
       </Sheet>
     </div>
   )

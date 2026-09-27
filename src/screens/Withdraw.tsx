@@ -6,13 +6,14 @@ import { Icon } from '../components/Icon'
 import { Header, Sheet, naira } from '../components/ui'
 
 export function Withdraw() {
-  const { s, addTx } = useStore()
+  const { s, api } = useStore()
   const { push, reset, toast } = useNav()
   const [amount, setAmount] = useState('')
   const [bankId, setBankId] = useState(s.banks[0]?.id ?? '')
   const [pinOpen, setPinOpen] = useState(false)
   const [pin, setPin] = useState('')
   const [pinError, setPinError] = useState('')
+  const [busy, setBusy] = useState(false)
   const value = Number(amount) || 0
   const bank = s.banks.find(b => b.id === bankId)
   const max = Math.max(0, s.balance - WITHDRAW_FEE)
@@ -21,30 +22,35 @@ export function Withdraw() {
     if (!bank) return toast('Add a bank account first.')
     if (value < 1000) return toast('The minimum withdrawal is ₦1,000.')
     if (value > max) return toast(`You can withdraw up to ${naira(max)} after the ${naira(WITHDRAW_FEE)} fee.`)
-    if (!s.pin) return toast('Set a transaction PIN in Account first.')
+    if (!s.hasPin) return toast('Set a transaction PIN in Account first.')
     setPin('')
     setPinError('')
     setPinOpen(true)
   }
 
-  const press = (d: string) => {
+  const press = async (d: string) => {
+    if (busy) return
     if (d === 'del') return setPin(p => p.slice(0, -1))
     const p = (pin + d).slice(0, 4)
     setPin(p)
-    if (p.length === 4) {
-      if (p !== s.pin) {
-        setPinError('Wrong PIN. Try again.')
-        window.setTimeout(() => setPin(''), 300)
-        return
-      }
-      const tx = addTx({
-        type: 'withdrawal', title: 'Withdrawal', subtitle: `${bank!.bank} ·· ${bank!.number.slice(-4)}`, amountNgn: -(value + WITHDRAW_FEE),
-        details: { Bank: bank!.bank, Account: bank!.number, 'Account name': bank!.name, Amount: naira(value), Fee: naira(WITHDRAW_FEE) },
-        firstStep: 'Withdrawal requested',
-      })
+    if (p.length < 4) return
+    setBusy(true)
+    try {
+      const tx = await api.withdraw(bank!.id, value, p)
       setPinOpen(false)
       toast('Withdrawal requested')
       reset('history', [{ name: 'tx', id: tx.id }])
+    } catch (e) {
+      const msg = (e as Error).message
+      if (msg.startsWith('Wrong PIN') || msg.startsWith('Too many')) {
+        setPinError(msg)
+        window.setTimeout(() => setPin(''), 300)
+      } else {
+        setPinOpen(false)
+        toast(msg)
+      }
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -91,7 +97,7 @@ export function Withdraw() {
       </div>
 
       <Sheet open={pinOpen} onClose={() => setPinOpen(false)} title="Enter your PIN">
-        <p className="muted center">Demo PIN is 1234</p>
+        {api.mode === 'demo' && <p className="muted center">Demo PIN is 1234</p>}
         <div className="pin-dots" aria-label={`${pin.length} of 4 digits entered`}>
           {[0, 1, 2, 3].map(i => <span key={i} className={i < pin.length ? 'on' : ''} />)}
         </div>

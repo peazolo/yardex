@@ -2,23 +2,42 @@ import { useState, type FormEvent } from 'react'
 import { useStore } from '../store'
 
 export function Auth() {
-  const { s, patch } = useStore()
+  const { s, api } = useStore()
+  const live = api.mode === 'live'
   const [mode, setMode] = useState<'login' | 'signup'>('login')
-  const [username, setUsername] = useState(s.user.username)
-  const [password, setPassword] = useState('demo1234')
+  const [username, setUsername] = useState(live ? '' : s.user.username)
+  const [password, setPassword] = useState(live ? '' : 'demo1234')
   const [email, setEmail] = useState('')
   const [error, setError] = useState('')
+  const [info, setInfo] = useState('')
+  const [busy, setBusy] = useState(false)
+  // the live backend logs in by email; the demo by username
+  const needsEmail = live || mode === 'signup'
+  const needsUsername = !live || mode === 'signup'
 
-  const submit = (e: FormEvent) => {
+  const submit = async (e: FormEvent) => {
     e.preventDefault()
-    if (username.trim().length < 3) return setError('Usernames need at least 3 characters.')
+    if (needsUsername && !/^[a-zA-Z0-9_.]{3,24}$/.test(username.trim())) return setError('Usernames need 3 to 24 letters, numbers, dots or underscores.')
+    if (needsEmail && !/^\S+@\S+\.\S+$/.test(email)) return setError('Enter a valid email address.')
     if (password.length < 6) return setError('Passwords need at least 6 characters.')
-    if (mode === 'signup' && !/^\S+@\S+\.\S+$/.test(email)) return setError('Enter a valid email address.')
     setError('')
-    patch(st => ({
-      loggedIn: true,
-      user: mode === 'signup' ? { ...st.user, username: username.trim(), email, fullName: username.trim() } : { ...st.user, username: username.trim() },
-    }))
+    setInfo('')
+    setBusy(true)
+    try {
+      if (mode === 'signup') {
+        const msg = await api.signUp(email, username.trim().toLowerCase(), password)
+        if (msg) {
+          setInfo(msg)
+          setMode('login')
+        }
+      } else {
+        await api.signIn(live ? email : username, password)
+      }
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (
@@ -41,11 +60,13 @@ export function Auth() {
             Create account
           </button>
         </div>
-        <label className="field">
-          <span>Username</span>
-          <input id="auth-username" value={username} onChange={e => setUsername(e.target.value)} autoComplete="username" />
-        </label>
-        {mode === 'signup' && (
+        {needsUsername && (
+          <label className="field">
+            <span>Username</span>
+            <input id="auth-username" value={username} onChange={e => setUsername(e.target.value)} autoComplete="username" />
+          </label>
+        )}
+        {needsEmail && (
           <label className="field">
             <span>Email</span>
             <input id="auth-email" type="email" value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" placeholder="you@example.com" />
@@ -56,10 +77,11 @@ export function Auth() {
           <input id="auth-password" type="password" value={password} onChange={e => setPassword(e.target.value)} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} />
         </label>
         {error && <p className="form-error">{error}</p>}
-        <button className="btn primary block" type="submit">
-          {mode === 'login' ? 'Log in' : 'Create account'}
+        {info && <p className="hint ok">{info}</p>}
+        <button className="btn primary block" type="submit" disabled={busy}>
+          {busy ? 'Please wait…' : mode === 'login' ? 'Log in' : 'Create account'}
         </button>
-        <p className="fine">Demo mode: any username and a 6+ character password will work.</p>
+        {!live && <p className="fine">Demo mode: any username and a 6+ character password will work.</p>}
       </form>
     </div>
   )
